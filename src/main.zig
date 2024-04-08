@@ -14,7 +14,7 @@ pub fn main() !void {
         var image: JxlImage = undefined;
         defer image.deinit(allocator);
         try loadJxlImage(allocator, arg, &image);
-        std.debug.print("image: {}×{}×{} ({} bytes)\n", .{ image.cols, image.rows, image.depth, image.data.len });
+        std.debug.print("image: {}×{}×{} ({} bytes)\n", .{ image.cols, image.rows, image.channels, image.data.len });
         const quality: f32 = if (args.next()) |q| std.fmt.parseFloat(f32, q) catch 100 else 100;
         try saveJxlImage(allocator, image, "output.jxl", quality);
     } else {

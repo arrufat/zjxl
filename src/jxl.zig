@@ -9,7 +9,7 @@ const jxl = @cImport({
 pub const JxlImage = struct {
     rows: usize,
     cols: usize,
-    depth: usize,
+    channels: usize,
     data: []u8,
     pub fn deinit(self: JxlImage, allocator: std.mem.Allocator) void {
         allocator.free(self.data);
@@ -72,7 +72,6 @@ fn jxlEncoderVersion() std.SemanticVersion {
 }
 
 pub fn loadJxlImage(allocator: std.mem.Allocator, filename: []const u8, image: *JxlImage) !void {
-    std.debug.print("libjxl decoder: {}\n", .{jxlDecoderVersion()});
     const file = try std.fs.cwd().readFileAlloc(allocator, filename, 100 * 1024 * 1024);
     defer allocator.free(file);
 
@@ -95,7 +94,7 @@ pub fn loadJxlImage(allocator: std.mem.Allocator, filename: []const u8, image: *
     }
 
     if (jxl.JXL_DEC_SUCCESS != jxl.JxlDecoderSetInput(dec, file.ptr, file.len)) {
-        std.debug.print("JxlDecoderSetInput failed\n", .{});
+        std.log.err("JxlDecoderSetInput failed\n", .{});
         jxl.JxlDecoderCloseInput(dec);
         return;
     }
@@ -125,7 +124,6 @@ pub fn loadJxlImage(allocator: std.mem.Allocator, filename: []const u8, image: *
             format.num_channels = basic_info.num_color_channels + basic_info.num_extra_channels;
             const num_threads = jxl.JxlResizableParallelRunnerSuggestThreads(basic_info.xsize, basic_info.ysize);
             jxl.JxlResizableParallelRunnerSetThreads(runner, num_threads);
-            // std.debug.print("image size: {d}×{d}\n", .{ info.xsize, info.ysize });
         } else if (status == jxl.JXL_DEC_NEED_IMAGE_OUT_BUFFER) {
             var buffer_size: usize = undefined;
             if (jxl.JXL_DEC_SUCCESS != jxl.JxlDecoderImageOutBufferSize(dec, &format, &buffer_size)) {
@@ -139,25 +137,17 @@ pub fn loadJxlImage(allocator: std.mem.Allocator, filename: []const u8, image: *
                 });
                 return;
             }
-            // std.debug.print("buffer size: {d}\n", .{buffer_size});
             try pixels.resize(basic_info.xsize * basic_info.ysize * format.num_channels);
-            // std.debug.print("pixels size: {d}\n", .{pixels.items.len});
-            // std.debug.print("format: {any}\n", .{format});
             const pixels_ptr: *void = @ptrCast(pixels.items.ptr);
             const pixels_size = pixels.items.len * @sizeOf(u8);
             if (jxl.JXL_DEC_SUCCESS != jxl.JxlDecoderSetImageOutBuffer(dec, &format, pixels_ptr, pixels_size)) {
                 std.log.err("JxlDecoderSetImageOutBuffer failed\n", .{});
             }
-        } else if (status == jxl.JXL_DEC_FULL_IMAGE) {
-            // Nothing to do. Do not yet return. If the image is an animation, more
-            // full frames may be decoded. This example only keeps the last one.
-        } else if (status == jxl.JXL_DEC_SUCCESS) {
-            // All decoding successfully finished.
-            // It's not required to call JxlDecoderReleaseInput(dec.get()) here since
-            // the decoder will be destroyed.
+        } else if (status == jxl.JXL_DEC_FULL_IMAGE or status == jxl.JXL_DEC_SUCCESS) {
+            // We have either decoded a full image (there might be more if it's an animation) or all decoding successfully finished.
             image.rows = basic_info.ysize;
             image.cols = basic_info.xsize;
-            image.depth = basic_info.num_color_channels + basic_info.num_extra_channels;
+            image.channels = basic_info.num_color_channels + basic_info.num_extra_channels;
             image.data = try pixels.toOwnedSlice();
             return;
         } else {
@@ -179,7 +169,7 @@ pub fn saveJxlImage(allocator: std.mem.Allocator, image: JxlImage, filename: []c
     }
 
     const pixel_format: jxl.JxlPixelFormat = .{
-        .num_channels = @intCast(image.depth),
+        .num_channels = @intCast(image.channels),
         .data_type = jxl.JXL_TYPE_UINT8,
         .endianness = jxl.JXL_NATIVE_ENDIAN,
         .@"align" = 0,
@@ -190,7 +180,7 @@ pub fn saveJxlImage(allocator: std.mem.Allocator, image: JxlImage, filename: []c
     basic_info.xsize = @intCast(image.cols);
     basic_info.ysize = @intCast(image.rows);
     basic_info.bits_per_sample = 8;
-    switch (image.depth) {
+    switch (image.channels) {
         1 => {
             basic_info.num_color_channels = 1;
             basic_info.num_extra_channels = 0;
@@ -217,7 +207,7 @@ pub fn saveJxlImage(allocator: std.mem.Allocator, image: JxlImage, filename: []c
         },
         else => @panic("unsupported number of channels"),
     }
-    basic_info.num_extra_channels = if (image.depth % 2 == 0) 1 else 0;
+    basic_info.num_extra_channels = if (image.channels % 2 == 0) 1 else 0;
     basic_info.uses_original_profile = if (quality == 100) jxl.JXL_TRUE else jxl.JXL_FALSE;
 
     if (jxl.JXL_ENC_SUCCESS != jxl.JxlEncoderSetBasicInfo(enc, &basic_info)) {
@@ -230,7 +220,6 @@ pub fn saveJxlImage(allocator: std.mem.Allocator, image: JxlImage, filename: []c
     jxl.JxlColorEncodingSetToSRGB(&color_encoding, is_gray);
 
     if (jxl.JXL_ENC_SUCCESS != jxl.JxlEncoderSetColorEncoding(enc, &color_encoding)) {
-        std.log.err("{any}", .{color_encoding});
         std.log.err("JxlEncoderSetColorEncoding failed\n", .{});
         return;
     }
