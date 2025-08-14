@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const jxl = @cImport({
     @cInclude("jxl/decode.h");
     @cInclude("jxl/encode.h");
@@ -11,8 +12,8 @@ pub const JxlImage = struct {
     cols: usize,
     channels: usize,
     data: []u8,
-    pub fn deinit(self: JxlImage, allocator: std.mem.Allocator) void {
-        allocator.free(self.data);
+    pub fn deinit(self: JxlImage, gpa: std.mem.Allocator) void {
+        gpa.free(self.data);
     }
 };
 
@@ -22,7 +23,7 @@ const PixelFormat = enum {
     rgb,
     rgb_alpha,
 
-    pub fn has_alpha(self: PixelFormat) bool {
+    pub fn hasAlpha(self: PixelFormat) bool {
         return switch (self) {
             .grayscale_alpha, .rgb_alpha => true,
             .grayscale, .rgb => false,
@@ -71,9 +72,9 @@ fn jxlEncoderVersion() std.SemanticVersion {
     return .{ .major = major, .minor = minor, .patch = patch };
 }
 
-pub fn loadJxlImage(allocator: std.mem.Allocator, filename: []const u8, image: *JxlImage) !void {
-    const file = try std.fs.cwd().readFileAlloc(allocator, filename, 100 * 1024 * 1024);
-    defer allocator.free(file);
+pub fn loadJxlImage(gpa: std.mem.Allocator, filename: []const u8, image: *JxlImage) !void {
+    const file = try std.fs.cwd().readFileAlloc(gpa, filename, 100 * 1024 * 1024);
+    defer gpa.free(file);
 
     const signature = jxl.JxlSignatureCheck(file.ptr, file.len);
     if (signature != jxl.JXL_SIG_CODESTREAM and signature != jxl.JXL_SIG_CONTAINER) {
@@ -106,7 +107,7 @@ pub fn loadJxlImage(allocator: std.mem.Allocator, filename: []const u8, image: *
         .endianness = jxl.JXL_NATIVE_ENDIAN,
         .@"align" = 0,
     };
-    var pixels = std.ArrayList(u8).init(allocator);
+    var pixels: std.ArrayList(u8) = .init(gpa);
     defer pixels.deinit();
     while (true) {
         const status = jxl.JxlDecoderProcessInput(dec);
@@ -157,7 +158,7 @@ pub fn loadJxlImage(allocator: std.mem.Allocator, filename: []const u8, image: *
     }
 }
 
-pub fn saveJxlImage(allocator: std.mem.Allocator, image: JxlImage, filename: []const u8, quality: f32) !void {
+pub fn saveJxlImage(gpa: std.mem.Allocator, image: JxlImage, filename: []const u8, quality: f32) !void {
     const enc = jxl.JxlEncoderCreate(null);
     defer jxl.JxlEncoderDestroy(enc);
     const num_threads = jxl.JxlThreadParallelRunnerDefaultNumWorkerThreads();
@@ -244,7 +245,7 @@ pub fn saveJxlImage(allocator: std.mem.Allocator, image: JxlImage, filename: []c
         return;
     }
     jxl.JxlEncoderCloseInput(enc);
-    var compressed = std.ArrayList(u8).init(allocator);
+    var compressed: std.ArrayList(u8) = .init(gpa);
     defer compressed.deinit();
     try compressed.resize(64);
     var next_out: [*c]u8 = compressed.items.ptr;
@@ -261,8 +262,8 @@ pub fn saveJxlImage(allocator: std.mem.Allocator, image: JxlImage, filename: []c
     }
     var file = try std.fs.cwd().createFile(filename, .{});
     defer file.close();
-    var bw = std.io.bufferedWriter(file.writer());
-    const writer = bw.writer();
-    try writer.writeAll(compressed.items);
-    try bw.flush();
+    var write_buffer: [4096]u8 = undefined;
+    var file_writer = file.writer(&write_buffer);
+    try file_writer.interface.writeAll(compressed.items);
+    try file_writer.interface.flush();
 }

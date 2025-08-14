@@ -4,14 +4,17 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
         .name = "zjxl",
-        .root_source_file = b.path("src/jxl.zig"),
-        .target = target,
-        .optimize = optimize,
+        .linkage = .static,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/jxl.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     lib.linkLibC();
-    lib.linkSystemLibrary("jxl");
+    lib.linkSystemLibrary2("jxl", .{ .needed = true });
     lib.linkSystemLibrary("jxl_cms");
     lib.linkSystemLibrary("jxl_threads");
     lib.root_module.strip = optimize != .Debug;
@@ -19,9 +22,11 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "zjxl",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     exe.root_module.linkLibrary(lib);
     exe.root_module.strip = optimize != .Debug;
