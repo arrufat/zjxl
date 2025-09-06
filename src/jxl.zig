@@ -73,7 +73,7 @@ fn jxlEncoderVersion() std.SemanticVersion {
 }
 
 pub fn loadJxlImage(gpa: std.mem.Allocator, filename: []const u8, image: *JxlImage) !void {
-    const file = try std.fs.cwd().readFileAlloc(gpa, filename, 100 * 1024 * 1024);
+    const file = try std.fs.cwd().readFileAlloc(filename, gpa, std.Io.Limit.limited(100 * 1024 * 1024));
     defer gpa.free(file);
 
     const signature = jxl.JxlSignatureCheck(file.ptr, file.len);
@@ -107,8 +107,8 @@ pub fn loadJxlImage(gpa: std.mem.Allocator, filename: []const u8, image: *JxlIma
         .endianness = jxl.JXL_NATIVE_ENDIAN,
         .@"align" = 0,
     };
-    var pixels: std.ArrayList(u8) = .init(gpa);
-    defer pixels.deinit();
+    var pixels: std.ArrayList(u8) = .empty;
+    defer pixels.deinit(gpa);
     while (true) {
         const status = jxl.JxlDecoderProcessInput(dec);
         if (status == jxl.JXL_DEC_ERROR) {
@@ -138,7 +138,7 @@ pub fn loadJxlImage(gpa: std.mem.Allocator, filename: []const u8, image: *JxlIma
                 });
                 return;
             }
-            try pixels.resize(basic_info.xsize * basic_info.ysize * format.num_channels);
+            try pixels.resize(gpa, basic_info.xsize * basic_info.ysize * format.num_channels);
             const pixels_ptr: *void = @ptrCast(pixels.items.ptr);
             const pixels_size = pixels.items.len * @sizeOf(u8);
             if (jxl.JXL_DEC_SUCCESS != jxl.JxlDecoderSetImageOutBuffer(dec, &format, pixels_ptr, pixels_size)) {
@@ -149,7 +149,7 @@ pub fn loadJxlImage(gpa: std.mem.Allocator, filename: []const u8, image: *JxlIma
             image.rows = basic_info.ysize;
             image.cols = basic_info.xsize;
             image.channels = basic_info.num_color_channels + basic_info.num_extra_channels;
-            image.data = try pixels.toOwnedSlice();
+            image.data = try pixels.toOwnedSlice(gpa);
             return;
         } else {
             std.log.err("Unknown JxlDecoder status\n", .{});
@@ -245,9 +245,9 @@ pub fn saveJxlImage(gpa: std.mem.Allocator, image: JxlImage, filename: []const u
         return;
     }
     jxl.JxlEncoderCloseInput(enc);
-    var compressed: std.ArrayList(u8) = .init(gpa);
-    defer compressed.deinit();
-    try compressed.resize(64);
+    var compressed: std.ArrayList(u8) = .empty;
+    defer compressed.deinit(gpa);
+    try compressed.resize(gpa, 64);
     var next_out: [*c]u8 = compressed.items.ptr;
     var avail_out = compressed.items.len - (@intFromPtr(next_out) - @intFromPtr(compressed.items.ptr));
     var process_result: c_uint = @intCast(jxl.JXL_ENC_NEED_MORE_OUTPUT);
@@ -255,7 +255,7 @@ pub fn saveJxlImage(gpa: std.mem.Allocator, image: JxlImage, filename: []const u
         process_result = jxl.JxlEncoderProcessOutput(enc, &next_out, &avail_out);
         if (process_result == jxl.JXL_ENC_NEED_MORE_OUTPUT) {
             const offset: usize = @intFromPtr(next_out) - @intFromPtr(compressed.items.ptr);
-            try compressed.resize(compressed.items.len * 2);
+            try compressed.resize(gpa, compressed.items.len * 2);
             next_out = @intFromPtr(compressed.items.ptr) + offset;
             avail_out = compressed.items.len - offset;
         }
