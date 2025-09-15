@@ -7,14 +7,15 @@ const jxl = @cImport({
     @cInclude("jxl/thread_parallel_runner.h");
 });
 
-pub const JxlImage = struct {
+pub const Image = struct {
     rows: usize,
     cols: usize,
     channels: usize,
     data: []u8,
-    pub fn deinit(self: JxlImage, gpa: std.mem.Allocator) void {
+    pub fn deinit(self: Image, gpa: std.mem.Allocator) void {
         gpa.free(self.data);
     }
+    pub const empty: Image = .{ .rows = 0, .cols = 0, .channels = 0, .data = &[_]u8{} };
 };
 
 const PixelFormat = enum {
@@ -56,7 +57,7 @@ const PixelFormat = enum {
     }
 };
 
-fn jxlDecoderVersion() std.SemanticVersion {
+fn decoderVersion() std.SemanticVersion {
     const version = jxl.JxlDecoderVersion();
     const patch = version % 1000;
     const minor = ((version - patch) / 1000) % 1000;
@@ -64,7 +65,7 @@ fn jxlDecoderVersion() std.SemanticVersion {
     return .{ .major = major, .minor = minor, .patch = patch };
 }
 
-fn jxlEncoderVersion() std.SemanticVersion {
+fn encoderVersion() std.SemanticVersion {
     const version = jxl.JxlEncoderVersion();
     const major = version / 1000000;
     const minor = (version - major * 1000000) / 1000;
@@ -72,7 +73,7 @@ fn jxlEncoderVersion() std.SemanticVersion {
     return .{ .major = major, .minor = minor, .patch = patch };
 }
 
-pub fn loadJxlImage(gpa: std.mem.Allocator, filename: []const u8, image: *JxlImage) !void {
+pub fn load(gpa: std.mem.Allocator, filename: []const u8, image: *Image) !void {
     const file = try std.fs.cwd().readFileAlloc(filename, gpa, std.Io.Limit.limited(100 * 1024 * 1024));
     defer gpa.free(file);
 
@@ -158,7 +159,7 @@ pub fn loadJxlImage(gpa: std.mem.Allocator, filename: []const u8, image: *JxlIma
     }
 }
 
-pub fn saveJxlImage(gpa: std.mem.Allocator, image: JxlImage, filename: []const u8, quality: f32) !void {
+pub fn save(gpa: std.mem.Allocator, image: Image, filename: []const u8, quality: f32) !void {
     const enc = jxl.JxlEncoderCreate(null);
     defer jxl.JxlEncoderDestroy(enc);
     const num_threads = jxl.JxlThreadParallelRunnerDefaultNumWorkerThreads();
