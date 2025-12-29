@@ -1,4 +1,6 @@
 const std = @import("std");
+const Io = std.Io;
+const Allocator = std.mem.Allocator;
 
 const jxl = @cImport({
     @cInclude("jxl/decode.h");
@@ -12,7 +14,7 @@ pub const Image = struct {
     cols: usize,
     channels: usize,
     data: []u8,
-    pub fn deinit(self: Image, gpa: std.mem.Allocator) void {
+    pub fn deinit(self: Image, gpa: Allocator) void {
         gpa.free(self.data);
     }
     pub const empty: Image = .{ .rows = 0, .cols = 0, .channels = 0, .data = &[_]u8{} };
@@ -73,8 +75,8 @@ fn encoderVersion() std.SemanticVersion {
     return .{ .major = major, .minor = minor, .patch = patch };
 }
 
-pub fn load(gpa: std.mem.Allocator, filename: []const u8, image: *Image) !void {
-    const file = try std.fs.cwd().readFileAlloc(filename, gpa, std.Io.Limit.limited(100 * 1024 * 1024));
+pub fn load(io: Io, gpa: Allocator, filename: []const u8, image: *Image) !void {
+    const file = try Io.Dir.cwd().readFileAlloc(io, filename, gpa, .limited(100 * 1024 * 1024));
     defer gpa.free(file);
 
     const signature = jxl.JxlSignatureCheck(file.ptr, file.len);
@@ -159,7 +161,7 @@ pub fn load(gpa: std.mem.Allocator, filename: []const u8, image: *Image) !void {
     }
 }
 
-pub fn save(gpa: std.mem.Allocator, image: Image, filename: []const u8, quality: f32) !void {
+pub fn save(io: Io, gpa: Allocator, image: Image, filename: []const u8, quality: f32) !void {
     const enc = jxl.JxlEncoderCreate(null);
     defer jxl.JxlEncoderDestroy(enc);
     const num_threads = jxl.JxlThreadParallelRunnerDefaultNumWorkerThreads();
@@ -261,10 +263,10 @@ pub fn save(gpa: std.mem.Allocator, image: Image, filename: []const u8, quality:
             avail_out = compressed.items.len - offset;
         }
     }
-    var file = try std.fs.cwd().createFile(filename, .{});
-    defer file.close();
+    var file = try Io.Dir.cwd().createFile(io, filename, .{});
+    defer file.close(io);
     var write_buffer: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buffer);
+    var file_writer = file.writer(io, &write_buffer);
     try file_writer.interface.writeAll(compressed.items);
     try file_writer.interface.flush();
 }

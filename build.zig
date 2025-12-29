@@ -13,10 +13,10 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    lib.linkLibC();
-    lib.linkSystemLibrary2("jxl", .{ .needed = true });
-    lib.linkSystemLibrary("jxl_cms");
-    lib.linkSystemLibrary("jxl_threads");
+    lib.root_module.link_libc = true;
+    lib.root_module.linkSystemLibrary("jxl", .{ .needed = true });
+    lib.root_module.linkSystemLibrary("jxl_cms", .{});
+    lib.root_module.linkSystemLibrary("jxl_threads", .{});
     lib.root_module.strip = optimize != .Debug;
     b.installArtifact(lib);
 
