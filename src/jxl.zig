@@ -2,12 +2,7 @@ const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 
-const jxl = @cImport({
-    @cInclude("jxl/decode.h");
-    @cInclude("jxl/encode.h");
-    @cInclude("jxl/resizable_parallel_runner.h");
-    @cInclude("jxl/thread_parallel_runner.h");
-});
+const jxl = @import("c");
 
 pub const Image = struct {
     rows: usize,

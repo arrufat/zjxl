@@ -2,7 +2,7 @@
     .name = .zjxl,
     .version = "0.0.0",
     .fingerprint = 0xc3640f9f37011a9b,
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0-dev.1465+8b2d0ce21",
     .dependencies = .{},
     .paths = .{
         "build.zig",
