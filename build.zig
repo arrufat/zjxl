@@ -27,6 +27,10 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         }),
+        // The self-hosted x86_64 linker can't handle the .sframe relocations
+        // (R_X86_64_PC64) emitted by GCC 16's crt1.o, so use LLVM + LLD.
+        .use_llvm = true,
+        .use_lld = true,
     });
     exe.root_module.linkLibrary(lib);
     exe.root_module.strip = optimize != .Debug;
